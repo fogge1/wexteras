@@ -1,7 +1,7 @@
 <template>
     <div id="container">
-        <input type="text" v-model="text">
-        <button @click="changeText(text, humidText)">hej</button>
+        <!-- <input type="text" v-model="text">
+        <button @click="changeText(text, humidText)">hej</button> -->
     </div>
 </template>
 
@@ -27,16 +27,21 @@ export default {
             font: null,
             humidText: null,
             fanText: null,
-            text: null
+            leavesMaterial: null,
+            clock: null,
+            text: null,
+            controls: null,
         }
     },
     methods: {
         start : function() {
+            
+            container = document.getElementById('container');
             this.scene = new THREE.Scene();
-            this.camera = new THREE.PerspectiveCamera( 75, window.innerWidth/window.innerHeight, 0.1, 1000 );
+            this.camera = new THREE.PerspectiveCamera( 75, container.clientWidth/container.clientHeight, 0.1, 1000 );
 
             this.renderer = new THREE.WebGLRenderer();
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setSize(container.clientWidth, container.clientHeight);
             this.renderer.setClearColor('skyblue');
             const mainLight = new THREE.DirectionalLight(0xffffff, 5);
             mainLight.position.set(10, 10, 10);
@@ -44,7 +49,7 @@ export default {
             const hemisphereLight = new THREE.HemisphereLight(0xddeeff, 0x202020, 5);
             this.scene.add(mainLight, hemisphereLight);
 
-            document.getElementById("container").appendChild( this.renderer.domElement );
+            container.appendChild( this.renderer.domElement );
             
             const loader = new GLTFLoader();
             loader.load( '/models/greenhouse.gltf', (gltf) => {
@@ -55,7 +60,7 @@ export default {
                     if (o.isMesh){
                         o.material = newMaterial;
                     }
-                    });
+                });
                 this.scene.add(model)
                 this.model = model
                 let box3 = new THREE.Box3().setFromObject(this.model)
@@ -64,21 +69,17 @@ export default {
                 let box = box3.getSize(measure);
                 // console.log( box.y );
                 this.model.position.y -= box.y/2
-
-            }, undefined, function ( error ) {
-
-                console.error(error);
-
-            });
+                this.loadGrass()
+            })
 
            
 
             this.camera.position.z = 5;
             this.controls = new OrbitControls(this.camera, document.getElementById("container"));
-            this.controls.minDistance = 5;
-            this.controls.maxDistance = 10;
+            // this.controls.minDistance = 2;
+            // this.controls.maxDistance = 10;
             // this.controls.enablePan = false;
-            this.controls.update();
+            // this.controls.update();
 
             const fontLoader = new FontLoader()
 
@@ -142,18 +143,109 @@ export default {
                 
             })
 
-
             
+
+        },
+        loadGrass: function() {
+            this.clock = new THREE.Clock()
+            
+            const vertexShader = `
+                varying vec2 vUv;
+                uniform float time;
+                
+                void main() {
+
+                vUv = uv;
+                
+                // VERTEX POSITION
+                
+                vec4 mvPosition = vec4( position, 1.0 );
+                #ifdef USE_INSTANCING
+                    mvPosition = instanceMatrix * mvPosition;
+                #endif
+                
+                // DISPLACEMENT
+                
+                // here the displacement is made stronger on the blades tips.
+                float dispPower = 1.0 - cos( uv.y * 3.1416 / 2.0 );
+                
+                float displacement = sin( mvPosition.z + time * 10.0 ) * ( 0.05 * dispPower );
+                mvPosition.z += displacement;
+                
+                //
+                
+                vec4 modelViewPosition = modelViewMatrix * mvPosition;
+                gl_Position = projectionMatrix * modelViewPosition;
+
+                }
+            `;
+            
+            const fragmentShader = `
+            varying vec2 vUv;
+            
+            void main() {
+                vec3 baseColor = vec3( 0.41, 1.0, 0.5 );
+                float clarity = ( vUv.y * 0.5 ) + 0.5;
+                gl_FragColor = vec4( baseColor * clarity, 1 );
+            }
+            `;
+
+            const uniforms = {
+                time: {
+                value: 0
+                }
+            }
+
             // var geometry = new THREE.BoxGeometry( 0.5, 0.5, 0.2 );
             // var material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
             // var cube = new THREE.Mesh( geometry, material );
             // this.scene.add(cube);
             // this.model.attach(cube)
 
+            this.leavesMaterial = new THREE.ShaderMaterial({
+                vertexShader,
+                fragmentShader,
+                uniforms,
+                side: THREE.DoubleSide
+            })
+
+            const instanceNumber = 1250;
+            const dummy = new THREE.Object3D();
+
+            const geometry = new THREE.PlaneGeometry( 0.1, 0.25, 1, 4 );
+            geometry.translate( 0, 0, 0 ); // move grass blade geometry lowest point at 0.
+
+            const instancedMesh = new THREE.InstancedMesh( geometry, this.leavesMaterial, instanceNumber );
+            // this.scene.add( instancedMesh );
             
+            this.model.attach(instancedMesh)
+            
+
+            for ( let i=0 ; i<instanceNumber ; i++ ) {
+
+                dummy.position.set(
+                ( Math.random() - 0.5 ) * 2.5,
+                0,
+                ( Math.random() - 0.5 ) * 2.5
+                );
+
+                dummy.scale.setScalar( 0.5 + Math.random() * 0.5 );
+
+                dummy.rotation.y = Math.random() * Math.PI;
+
+                dummy.updateMatrix();
+                instancedMesh.setMatrixAt( i, dummy.matrix );
+
+            }
+            instancedMesh.position.y = 0.6;
         },
         animate: function () {
             requestAnimationFrame( this.animate );
+            if (this.leavesMaterial) {
+                this.leavesMaterial.uniforms.time.value = this.clock.getElapsedTime();
+                this.leavesMaterial.uniformsNeedUpdate = true;
+            }
+            
             // this.cube.rotation.x += 0.01;
             if (this.model) this.model.rotation.y += 0.001;
             this.renderer.render( this.scene, this.camera );
@@ -165,9 +257,8 @@ export default {
                 height: 0.125
             })
             geo.computeBoundingBox()
-            const worldPosition = new THREE.Vector3();
-            // model.getWorldPosition( worldPosition );
-            console.log(model.getWorldPosition( worldPosition ));
+            
+    
             geo.translate(-geo.boundingBox.max.x/2, 0,-geo.boundingBox.max.z)
             model.geometry = geo
 
@@ -175,13 +266,13 @@ export default {
             
         },
         onWindowResize: function() {
-            this.camera.aspect = window.innerWidth / window.innerHeight;
+            container = document.getElementById('container');
+            this.camera.aspect = container.clientWidth/container.clientHeight;
 
             // Update camera frustum
             this.camera.updateProjectionMatrix();
-
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+            this.renderer.setSize(container.clientWidth, container.clientHeight);
+        },
     },
     mounted() {
         this.start()
@@ -194,9 +285,5 @@ export default {
 
 
 <style >
-    #container {
-        width: 100%;
-        height: 100%;
-        margin: auto;
-    }
+    
 </style>
