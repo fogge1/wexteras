@@ -12,6 +12,24 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {FontLoader} from 'three/examples/jsm/loaders/FontLoader.js'
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { initializeApp } from "firebase/app";
+import { getDatabase, ref, onValue } from "firebase/database";
+
+// TODO: Replace the following with your app's Firebase project configuration
+// See: https://firebase.google.com/docs/web/learn-more#config-object
+const firebaseConfig = {
+  // ...
+  // The value of `databaseURL` depends on the location of the database
+  databaseURL: "https://wexteras-ae025-default-rtdb.europe-west1.firebasedatabase.app",
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+// Initialize Realtime Database and get a reference to the service
+const db = getDatabase(app);
+
+
 
 export default {
     name: 'GreenHouse',
@@ -31,6 +49,7 @@ export default {
             clock: null,
             text: null,
             controls: null,
+            groundMirror: null,
         }
     },
     methods: {
@@ -39,11 +58,12 @@ export default {
             container = document.getElementById('container');
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera( 75, container.clientWidth/container.clientHeight, 0.1, 1000 );
-
-            this.renderer = new THREE.WebGLRenderer();
+            this.renderer = new THREE.WebGLRenderer({ antialias: true });
             this.renderer.setSize(container.clientWidth, container.clientHeight);
-            this.renderer.setClearColor('skyblue');
+            // this.renderer.setClearColor();
             const mainLight = new THREE.DirectionalLight(0xffffff, 5);
+            // this.updateCubeMap(this.renderer, this.scene);
+
             mainLight.position.set(10, 10, 10);
 
             const hemisphereLight = new THREE.HemisphereLight(0xddeeff, 0x202020, 5);
@@ -70,14 +90,39 @@ export default {
                 // console.log( box.y );
                 this.model.position.y -= box.y/2
                 this.loadGrass()
+                const geometry = new THREE.PlaneGeometry( 100.1, 100.1 );
+				let groundMirror = new Reflector( geometry, {
+					clipBias: 0.003,
+					textureWidth: window.innerWidth * window.devicePixelRatio,
+					textureHeight: window.innerHeight * window.devicePixelRatio,
+                    mixBlur: 0.5
+					// color: '#a4b3ab',
+                    // transparent: true, 
+				} );
+                const planeGeo = new THREE.PlaneGeometry( 100.1, 100.1 );
+                const texture = new THREE.TextureLoader().load( '/abstract-luxury-plain-blur-grey-black-gradient-used-as-background-studio-wall-display-your-products_1258-63641.jpg' );
+                const planeMat = new THREE.MeshBasicMaterial( { map: texture, opacity: 0.5, transparent: true} );
+                const plane = new THREE.Mesh( planeGeo, planeMat );
+
+                
+                groundMirror.position.y = -box.y/2-0.25
+                plane.position.y = -box.y/2 +.01-0.25
+                // plane.position.y = groundMirror.position.y + 1
+                // groundMirror.attach(plane)
+                plane.rotateX( - Math.PI / 2);
+                groundMirror.rotateX( - Math.PI / 2);
+                this.scene.add(plane)
+                this.scene.add( groundMirror );
             })
 
            
 
-            this.camera.position.z = 5;
+            this.camera.position.z = 7;
+            this.camera.position.y = 3;
             this.controls = new OrbitControls(this.camera, document.getElementById("container"));
-            // this.controls.minDistance = 2;
+            // this.controls.minDistance = 6;
             // this.controls.maxDistance = 10;
+            this.controls.maxPolarAngle = Math.PI/2; 
             // this.controls.enablePan = false;
             // this.controls.update();
 
@@ -85,21 +130,21 @@ export default {
 
             fontLoader.load('/fonts/Oswald_Regular.json', (font)  => {
                 this.font = font;
-                const tempGeo = new TextGeometry('21°C', {
+                const tempGeo = new TextGeometry('°C', {
                     font: font,
                     size: 0.5,
                     height: 0.125
                 })
 
                 const tempText = new THREE.Mesh(tempGeo, [
-                    new THREE.MeshPhongMaterial({color: 0xad4000}),
-                    new THREE.MeshPhongMaterial({color: 0x5c2301})
+                    new THREE.MeshPhongMaterial({color: '#09b342'}),
+                    new THREE.MeshPhongMaterial({color: '#0c993b'})
                 ])
 
                 tempText.geometry.computeBoundingBox()
                 tempText.geometry.translate(-tempText.geometry.boundingBox.max.x/2,0,-tempText.geometry.boundingBox.max.z)
 
-                const humidGeo = new TextGeometry('21%', {
+                const humidGeo = new TextGeometry('23%', {
                     font: font,
                     size: 0.5,
                     height: 0.125
@@ -131,9 +176,21 @@ export default {
                 this.humidText = humidText
                 this.fanText = fanText
 
-                this.tempText.position.y = 1.25
-                this.humidText.position.y = 2
-                this.fanText.position.y = 2.75
+                this.tempText.position.y = -1.5
+                this.humidText.position.y = -1.5
+                this.fanText.position.y = -1.5
+
+                this.tempText.position.x += 3
+                this.humidText.position.x += 3
+                this.fanText.position.x += 3
+
+                this.tempText.position.z -= 1
+                this.humidText.position.z += 1
+                this.fanText.position.z = 0
+
+                this.tempText.rotateX( - Math.PI / 2);
+                this.humidText.rotateX( - Math.PI / 2);
+                this.fanText.rotateX( - Math.PI / 2);
                 
                 this.scene.add(this.tempText)
                 this.scene.add(this.humidText)
@@ -247,7 +304,7 @@ export default {
             }
             
             // this.cube.rotation.x += 0.01;
-            if (this.model) this.model.rotation.y += 0.001;
+            // if (this.model) this.model.rotation.y += 0.001;
             this.renderer.render( this.scene, this.camera );
         },
         changeText: function(value, model) {
@@ -273,6 +330,14 @@ export default {
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(container.clientWidth, container.clientHeight);
         },
+    },
+    created () {
+        const db = getDatabase();
+        const tempRef = ref(db, 'temp');
+        onValue(tempRef, (snapshot) => {
+            const data = snapshot.val();
+            this.changeText(data + '°C', this.tempText)
+        });
     },
     mounted() {
         this.start()
