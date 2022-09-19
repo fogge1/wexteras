@@ -29,8 +29,6 @@ const app = initializeApp(firebaseConfig);
 // Initialize Realtime Database and get a reference to the service
 const db = getDatabase(app);
 
-
-
 export default {
     name: 'GreenHouse',
     data () {
@@ -60,7 +58,7 @@ export default {
             this.camera = new THREE.PerspectiveCamera( 75, container.clientWidth/container.clientHeight, 0.1, 1000 );
             this.renderer = new THREE.WebGLRenderer({ antialias: true });
             this.renderer.setSize(container.clientWidth, container.clientHeight);
-            // this.renderer.setClearColor();
+            this.renderer.setClearColor('skyblue');
             const mainLight = new THREE.DirectionalLight(0xffffff, 5);
             // this.updateCubeMap(this.renderer, this.scene);
 
@@ -89,32 +87,18 @@ export default {
                 let box = box3.getSize(measure);
                 // console.log( box.y );
                 this.model.position.y -= box.y/2
-                this.loadGrass()
-                const geometry = new THREE.PlaneGeometry( 100.1, 100.1 );
-				let groundMirror = new Reflector( geometry, {
-					clipBias: 0.003,
-					textureWidth: window.innerWidth * window.devicePixelRatio,
-					textureHeight: window.innerHeight * window.devicePixelRatio,
-                    mixBlur: 0.5
-					// color: '#a4b3ab',
-                    // transparent: true, 
-				} );
-                const planeGeo = new THREE.PlaneGeometry( 100.1, 100.1 );
-                const texture = new THREE.TextureLoader().load( '/abstract-luxury-plain-blur-grey-black-gradient-used-as-background-studio-wall-display-your-products_1258-63641.jpg' );
-                const planeMat = new THREE.MeshBasicMaterial( { map: texture, opacity: 0.5, transparent: true} );
-                const plane = new THREE.Mesh( planeGeo, planeMat );
+                const ledLight = new THREE.AmbientLight("#3fba0f", 10);
+                ledLight.position.set(0, 0, 0)
+                this.model.attach(ledLight)
 
-                
-                groundMirror.position.y = -box.y/2-0.25
-                plane.position.y = -box.y/2 +.01-0.25
-                // plane.position.y = groundMirror.position.y + 1
-                // groundMirror.attach(plane)
-                plane.rotateX( - Math.PI / 2);
-                groundMirror.rotateX( - Math.PI / 2);
-                this.scene.add(plane)
-                this.scene.add( groundMirror );
+                this.loadGrass()
+                this.loadPlane(box)
             })
 
+            // loader.load('/rainparticle.gltf', (gltf) => {
+            //     let rain = gltf.scene
+            //     this.scene.add(rain)
+            // })
            
 
             this.camera.position.z = 7;
@@ -141,9 +125,6 @@ export default {
                     new THREE.MeshPhongMaterial({color: '#0c993b'})
                 ])
 
-                tempText.geometry.computeBoundingBox()
-                tempText.geometry.translate(-tempText.geometry.boundingBox.max.x/2,0,-tempText.geometry.boundingBox.max.z)
-
                 const humidGeo = new TextGeometry('23%', {
                     font: font,
                     size: 0.5,
@@ -155,9 +136,6 @@ export default {
                     new THREE.MeshPhongMaterial({color: 0x5c2301})
                 ])
 
-                humidText.geometry.computeBoundingBox()
-                humidText.geometry.translate(-humidText.geometry.boundingBox.max.x/2, 0,-humidText.geometry.boundingBox.max.z)
-
                 const fanGeo = new TextGeometry('21 rpm', {
                     font: font,
                     size: 0.5,
@@ -168,21 +146,18 @@ export default {
                     new THREE.MeshPhongMaterial({color: 0xad4000}),
                     new THREE.MeshPhongMaterial({color: 0x5c2301})
                 ])
-                
-                fanText.geometry.computeBoundingBox()
-                fanText.geometry.translate(-fanText.geometry.boundingBox.max.x/2, 0,-fanText.geometry.boundingBox.max.z)
 
                 this.tempText = tempText
                 this.humidText = humidText
                 this.fanText = fanText
 
-                this.tempText.position.y = -1.5
-                this.humidText.position.y = -1.5
-                this.fanText.position.y = -1.5
+                this.tempText.position.y = -1.6
+                this.humidText.position.y = -1.6
+                this.fanText.position.y = -1.6
 
-                this.tempText.position.x += 3
-                this.humidText.position.x += 3
-                this.fanText.position.x += 3
+                this.tempText.position.x += 2.5
+                this.humidText.position.x += 2.5
+                this.fanText.position.x += 2.5
 
                 this.tempText.position.z -= 1
                 this.humidText.position.z += 1
@@ -253,12 +228,6 @@ export default {
                 }
             }
 
-            // var geometry = new THREE.BoxGeometry( 0.5, 0.5, 0.2 );
-            // var material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
-            // var cube = new THREE.Mesh( geometry, material );
-            // this.scene.add(cube);
-            // this.model.attach(cube)
-
             this.leavesMaterial = new THREE.ShaderMaterial({
                 vertexShader,
                 fragmentShader,
@@ -296,6 +265,63 @@ export default {
             }
             instancedMesh.position.y = 0.6;
         },
+        loadWater: function () {
+            const instanceNumber = 1250;
+            const dummy = new THREE.Object3D();
+
+            const geometry = new THREE.PlaneGeometry( 0.1, 0.25, 1, 4 );
+            geometry.translate( 0, 0, 0 ); // move grass blade geometry lowest point at 0.
+
+            const instancedMesh = new THREE.InstancedMesh( geometry, this.leavesMaterial, instanceNumber );
+            // this.scene.add( instancedMesh );
+            
+            this.model.attach(instancedMesh)
+            
+
+            for ( let i=0 ; i<instanceNumber ; i++ ) {
+
+                dummy.position.set(
+                ( Math.random() - 0.5 ) * 2.5,
+                0,
+                ( Math.random() - 0.5 ) * 2.5
+                );
+
+                dummy.scale.setScalar( 0.5 + Math.random() * 0.5 );
+
+                dummy.rotation.y = Math.random() * Math.PI;
+
+                dummy.updateMatrix();
+                instancedMesh.setMatrixAt( i, dummy.matrix );
+
+            }
+            instancedMesh.position.y = 0.6;
+        },
+        loadPlane: function(box) {
+            const geometry = new THREE.PlaneGeometry( 100.1, 100.1 );
+				let groundMirror = new Reflector( geometry, {
+					clipBias: 0.003,
+					textureWidth: window.innerWidth * window.devicePixelRatio,
+					textureHeight: window.innerHeight * window.devicePixelRatio,
+					// color: '#a4b3ab',
+                    // transparent: true, 
+				} );
+                const planeGeo = new THREE.CircleGeometry( 100, 100 );
+
+                // const texture = new THREE.TextureLoader().load( '/abstract-luxury-plain-blur-grey-black-gradient-used-as-background-studio-wall-display-your-products_1258-63641.jpg' );
+                const planeMat = new THREE.MeshStandardMaterial( { metalness: 1, roughness: 0.5, opacity: 0.6, transparent: true} );
+                const plane = new THREE.Mesh( planeGeo, planeMat );
+                // const wallGeo = new THREE.PlaneGeometry( 100.1, 10 );
+
+
+                groundMirror.position.y = -box.y/2-0.35
+                plane.position.y = -box.y/2 +.01-0.35
+                // plane.position.y = groundMirror.position.y + 1
+                // groundMirror.attach(plane)
+                plane.rotateX( - Math.PI / 2);
+                groundMirror.rotateX( - Math.PI / 2);
+                this.scene.add(plane)
+                this.scene.add( groundMirror );
+        },
         animate: function () {
             requestAnimationFrame( this.animate );
             if (this.leavesMaterial) {
@@ -313,10 +339,10 @@ export default {
                 size: 0.5,
                 height: 0.125
             })
-            geo.computeBoundingBox()
+            // geo.computeBoundingBox()
             
     
-            geo.translate(-geo.boundingBox.max.x/2, 0,-geo.boundingBox.max.z)
+            // geo.translate(-geo.boundingBox.max.x/2, 0,-geo.boundingBox.max.z)
             model.geometry = geo
 
 
