@@ -15,7 +15,6 @@ import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue } from "firebase/database";
-
 // TODO: Replace the following with your app's Firebase project configuration
 // See: https://firebase.google.com/docs/web/learn-more#config-object
 const firebaseConfig = {
@@ -33,6 +32,7 @@ export default {
     name: 'GreenHouse',
     data () {
         return {
+            
             scene: null,
             camera: null,
             renderer: null,
@@ -45,15 +45,18 @@ export default {
             fanText: null,
             leavesMaterial: null,
             clock: null,
+            raycaster: null,
+            pointer: null,
             text: null,
             controls: null,
             groundMirror: null,
+            rainDrops: [],
         }
     },
     methods: {
         start : function() {
-            
-            container = document.getElementById('container');
+
+            this.container = document.getElementById('container');
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera( 75, container.clientWidth/container.clientHeight, 0.1, 1000 );
             this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -64,8 +67,8 @@ export default {
 
             mainLight.position.set(10, 10, 10);
 
-            const hemisphereLight = new THREE.HemisphereLight(0xddeeff, 0x202020, 5);
-            this.scene.add(mainLight, hemisphereLight);
+            // const hemisphereLight = new THREE.HemisphereLight(0xddeeff, 0x202020, 5);
+            this.scene.add(mainLight);
 
             container.appendChild( this.renderer.domElement );
             
@@ -79,6 +82,7 @@ export default {
                         o.material = newMaterial;
                     }
                 });
+                console.log(model)
                 this.scene.add(model)
                 this.model = model
                 let box3 = new THREE.Box3().setFromObject(this.model)
@@ -90,15 +94,14 @@ export default {
                 const ledLight = new THREE.AmbientLight("#3fba0f", 10);
                 ledLight.position.set(0, 0, 0)
                 this.model.attach(ledLight)
-
+                // this.physics.addMesh( this.model );
                 this.loadGrass()
                 this.loadPlane(box)
+                this.loadButton()
             })
-
-            // loader.load('/rainparticle.gltf', (gltf) => {
-            //     let rain = gltf.scene
-            //     this.scene.add(rain)
-            // })
+            
+            this.raycaster = new THREE.Raycaster();
+            this.pointer = new THREE.Vector2();
            
 
             this.camera.position.z = 7;
@@ -322,15 +325,51 @@ export default {
                 this.scene.add(plane)
                 this.scene.add( groundMirror );
         },
+        loadButton: function() {
+            const btnGeo = new THREE.CylinderGeometry( .2, .2, .2, 32 );
+            const btnMat = new THREE.MeshStandardMaterial( {color: "rgb(54, 77, 65)"} );
+            const btnMesh = new THREE.Mesh( btnGeo, btnMat );
+            btnMesh.rotateX( - Math.PI / 2);
+            btnMesh.position.z = 1.8;
+            btnMesh.position.y = -1.2;
+            btnMesh.name = "testing"
+            this.scene.add(btnMesh)
+            // console.log(btnMesh)
+        },
+        loadRain: function () {
+            const rainDropsNumber = 50;
+            const geometryBox = new THREE.BoxGeometry( 0.1, 0.1, 0.1 );
+            const rainMat = new THREE.MeshBasicMaterial({color: "rgb(0, 0, 255)"})
+            
+            console.log(this.scene)
+            for ( let i = 0; i < rainDropsNumber; i ++ ) {
+
+                let rainDrop = new THREE.Mesh(geometryBox, rainMat);
+                // rainDrop.position.x = Math.random() * (2 - 2) + 2;
+                // rainDrop.position.y = Math.random() * 10
+                // rainDrop.position.z = Math.random() * (2 - 2) + 2;
+                rainDrop.position.set(( Math.random() - 0.5 ) * 2.5,  Math.random() * (0.8),( Math.random() - 0.5 ) * 2.5);
+                rainDrop.time = Math.random()*100;
+                this.scene.add(rainDrop)
+                this.rainDrops.push(rainDrop);
+            }
+        },
         animate: function () {
             requestAnimationFrame( this.animate );
             if (this.leavesMaterial) {
                 this.leavesMaterial.uniforms.time.value = this.clock.getElapsedTime();
                 this.leavesMaterial.uniformsNeedUpdate = true;
             }
-            
-            // this.cube.rotation.x += 0.01;
-            // if (this.model) this.model.rotation.y += 0.001;
+            // this.boxes.position.y -= 0.03*this.clock.getElapsedTime();
+            // let test = this.rainDrops
+            this.rainDrops.forEach((drop) => {
+                if (drop.position.y < -1) {
+                    drop.position.set(( Math.random() - 0.5 ) * 2.5, Math.random() * (0.8),( Math.random() - 0.5 ) * 2.5); 
+                    drop.time=0; 
+                } 
+                drop.time +=1; 
+                drop.position.y -= 0.0005*drop.time;
+            })
             this.renderer.render( this.scene, this.camera );
         },
         changeText: function(value, model) {
@@ -356,18 +395,37 @@ export default {
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(container.clientWidth, container.clientHeight);
         },
+        onMouseClick: function(e) {
+            this.pointer.x = ( e.clientX / window.innerWidth ) * 2 - 1;
+	        this.pointer.y = - ( e.clientY / window.innerHeight ) * 2 + 1;
+            
+            
+            this.raycaster.setFromCamera( this.pointer, this.camera );
+
+            // calculate objects intersecting the picking ray
+            const intersects = this.raycaster.intersectObjects( this.scene.children );
+            console.log(intersects[ 0 ].object)
+
+        }
     },
     created () {
         const db = getDatabase();
         const tempRef = ref(db, 'temp');
+        const isWateringRef = ref(db, 'isWatering');
         onValue(tempRef, (snapshot) => {
             const data = snapshot.val();
             this.changeText(data + '°C', this.tempText)
+        });
+        onValue(isWateringRef, (snapshot) => {
+            const data = snapshot.val();
+            if (!data) this.rainDrops = []
+            else if (data) this.loadRain()
         });
     },
     mounted() {
         this.start()
         window.addEventListener('resize', this.onWindowResize);
+        window.addEventListener('click', this.onMouseClick);
         this.animate()
     }
 }
