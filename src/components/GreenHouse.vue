@@ -25,8 +25,11 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-// Initialize Realtime Database and get a reference to the service
 const db = getDatabase(app);
+
+// Initialize Realtime Database and get a reference to the service
+const loader = new GLTFLoader();
+
 
 export default {
     name: 'GreenHouse',
@@ -50,6 +53,9 @@ export default {
             text: null,
             controls: null,
             groundMirror: null,
+            fan: null,
+            isFanSpinning: false,
+            targetQuaternion: null,
             rainDrops: [],
         }
     },
@@ -72,7 +78,6 @@ export default {
 
             container.appendChild( this.renderer.domElement );
             
-            const loader = new GLTFLoader();
             loader.load( '/models/greenhouse.gltf', (gltf) => {
                 
                 let model = gltf.scene
@@ -82,7 +87,6 @@ export default {
                         o.material = newMaterial;
                     }
                 });
-                console.log(model)
                 this.scene.add(model)
                 this.model = model
                 let box3 = new THREE.Box3().setFromObject(this.model)
@@ -98,7 +102,32 @@ export default {
                 this.loadGrass()
                 this.loadPlane(box)
                 this.loadButton()
+                // this.loadGlass(box)
             })
+
+            loader.load('/models/fan.gltf', (gltf) => {
+                this.fan = gltf.scene
+                this.fan.rotateX( - Math.PI / 2);
+                this.fan.position.y = .67;
+                this.fan.position.x = 1.15;
+                this.fan.position.z = 0.5;
+                this.scene.add(this.fan)
+                
+            })
+            const glassMat = new THREE.MeshStandardMaterial( { opacity: 0.3, transparent: true, color: '#ffffff'} );
+
+            loader.load('/models/glassdoor.gltf', (gltf) => {
+                this.roof = gltf.scene;
+                this.roof.traverse((o) => {
+                    if (o.isMesh) o.material = glassMat;
+                });
+                this.roof.position.x = 1.15;
+                this.roof.position.y = .9;
+                this.roof.position.z = -1.5;
+                this.scene.add(this.roof)
+            })
+
+            this.loadRain()
             
             this.raycaster = new THREE.Raycaster();
             this.pointer = new THREE.Vector2();
@@ -117,70 +146,66 @@ export default {
 
             fontLoader.load('/fonts/Oswald_Regular.json', (font)  => {
                 this.font = font;
-                const tempGeo = new TextGeometry('°C', {
+                const tempGeo = new TextGeometry('Loading temp...', {
                     font: font,
                     size: 0.5,
                     height: 0.125
                 })
 
                 const tempText = new THREE.Mesh(tempGeo, [
-                    new THREE.MeshPhongMaterial({color: '#09b342'}),
-                    new THREE.MeshPhongMaterial({color: '#0c993b'})
+                    new THREE.MeshBasicMaterial({color: '#09b342'}),
+                    new THREE.MeshBasicMaterial({color: '#0c993b'})
                 ])
 
-                const humidGeo = new TextGeometry('23%', {
+                const humidGeo = new TextGeometry('Loading humid...', {
                     font: font,
                     size: 0.5,
                     height: 0.125
                 })
                 
                 const humidText = new THREE.Mesh(humidGeo, [
-                    new THREE.MeshPhongMaterial({color: 0xad4000}),
-                    new THREE.MeshPhongMaterial({color: 0x5c2301})
-                ])
-
-                const fanGeo = new TextGeometry('21 rpm', {
-                    font: font,
-                    size: 0.5,
-                    height: 0.125
-                })
-
-                const fanText = new THREE.Mesh(fanGeo, [
-                    new THREE.MeshPhongMaterial({color: 0xad4000}),
-                    new THREE.MeshPhongMaterial({color: 0x5c2301})
+                    new THREE.MeshBasicMaterial({color: 0xad4000}),
+                    new THREE.MeshBasicMaterial({color: 0x5c2301})
                 ])
 
                 this.tempText = tempText
                 this.humidText = humidText
-                this.fanText = fanText
+                // this.fanText = fanText
 
                 this.tempText.position.y = -1.6
                 this.humidText.position.y = -1.6
-                this.fanText.position.y = -1.6
+                // this.fanText.position.y = -1.6
 
                 this.tempText.position.x += 2.5
                 this.humidText.position.x += 2.5
-                this.fanText.position.x += 2.5
+                // this.fanText.position.x += 2.5
 
-                this.tempText.position.z -= 1
-                this.humidText.position.z += 1
-                this.fanText.position.z = 0
+                this.tempText.position.z -= 0.5
+                this.humidText.position.z += 0.5
+                // this.fanText.position.z = 0
 
                 this.tempText.rotateX( - Math.PI / 2);
                 this.humidText.rotateX( - Math.PI / 2);
-                this.fanText.rotateX( - Math.PI / 2);
+                // this.fanText.rotateX( - Math.PI / 2);
                 
-                this.scene.add(this.tempText)
-                this.scene.add(this.humidText)
-                this.scene.add(this.fanText)
-
-
-                
+                this.scene.add(this.tempText, this.humidText)
             })
 
             
 
         },
+        // loadGlass: function (box) {
+        //     const glassMat = new THREE.MeshStandardMaterial( { opacity: 0.3, transparent: true, color: 'white'} );
+
+        //     loader.load('/models/glass.gltf', (gltf) => {
+        //         let glass = gltf.scene
+        //         glass.position.y = -box.y/2
+        //         glass.traverse((o) => {
+        //             if (o.isMesh) o.material = glassMat;
+        //         });
+        //         this.scene.add(glass)
+        //     })
+        // },
         loadGrass: function() {
             this.clock = new THREE.Clock()
             
@@ -326,22 +351,13 @@ export default {
                 this.scene.add( groundMirror );
         },
         loadButton: function() {
-            const btnGeo = new THREE.CylinderGeometry( .2, .2, .2, 32 );
-            const btnMat = new THREE.MeshStandardMaterial( {color: "rgb(54, 77, 65)"} );
-            const btnMesh = new THREE.Mesh( btnGeo, btnMat );
-            btnMesh.rotateX( - Math.PI / 2);
-            btnMesh.position.z = 1.8;
-            btnMesh.position.y = -1.2;
-            btnMesh.name = "testing"
-            this.scene.add(btnMesh)
-            // console.log(btnMesh)
+            
         },
         loadRain: function () {
             const rainDropsNumber = 50;
             const geometryBox = new THREE.BoxGeometry( 0.1, 0.1, 0.1 );
             const rainMat = new THREE.MeshBasicMaterial({color: "rgb(0, 0, 255)"})
             
-            console.log(this.scene)
             for ( let i = 0; i < rainDropsNumber; i ++ ) {
 
                 let rainDrop = new THREE.Mesh(geometryBox, rainMat);
@@ -350,7 +366,6 @@ export default {
                 // rainDrop.position.z = Math.random() * (2 - 2) + 2;
                 rainDrop.position.set(( Math.random() - 0.5 ) * 2.5,  Math.random() * (0.8),( Math.random() - 0.5 ) * 2.5);
                 rainDrop.time = Math.random()*100;
-                this.scene.add(rainDrop)
                 this.rainDrops.push(rainDrop);
             }
         },
@@ -370,6 +385,9 @@ export default {
                 drop.time +=1; 
                 drop.position.y -= 0.0005*drop.time;
             })
+
+            if (this.isFanSpinning && this.fan) this.fan.rotation.z +=0.1
+            if (this.roof && this.targetQuaternion) this.roof.quaternion.slerp(this.targetQuaternion, 0.01);
             this.renderer.render( this.scene, this.camera );
         },
         changeText: function(value, model) {
@@ -378,14 +396,17 @@ export default {
                 size: 0.5,
                 height: 0.125
             })
-            // geo.computeBoundingBox()
-            
-    
-            // geo.translate(-geo.boundingBox.max.x/2, 0,-geo.boundingBox.max.z)
             model.geometry = geo
-
-
-            
+        },
+        rotateRoof: function(dir) {
+            if (dir) {
+                // this.roof.rotation.x = -Math.PI/20; 
+                this.targetQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3( 1, 0, 0 ), -Math.PI / 20)
+                
+            }
+            else {
+                this.targetQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3( 1, 0, 0 ), 0)
+            }
         },
         onWindowResize: function() {
             container = document.getElementById('container');
@@ -404,22 +425,42 @@ export default {
 
             // calculate objects intersecting the picking ray
             const intersects = this.raycaster.intersectObjects( this.scene.children );
-            console.log(intersects[ 0 ].object)
-
         }
     },
     created () {
-        const db = getDatabase();
         const tempRef = ref(db, 'temp');
+        const humidRef = ref(db, 'humid');
         const isWateringRef = ref(db, 'isWatering');
+        const isFanSpinningRef = ref(db, 'isFanSpinning');
+        const isRoofOpen = ref(db, 'isRoofOpen');
         onValue(tempRef, (snapshot) => {
             const data = snapshot.val();
             this.changeText(data + '°C', this.tempText)
         });
+        onValue(humidRef, (snapshot) => {
+            const data = snapshot.val();
+            this.changeText(data + '%', this.humidText)
+        });
         onValue(isWateringRef, (snapshot) => {
             const data = snapshot.val();
-            if (!data) this.rainDrops = []
-            else if (data) this.loadRain()
+            if (data) {
+                this.rainDrops.forEach((drop) => {
+                    this.scene.add(drop)
+                })
+            }
+            else if (!data) {
+                this.rainDrops.forEach((drop) => {
+                    this.scene.remove(drop)
+                })
+            }
+        });
+        onValue(isFanSpinningRef, (snapshot) => {
+            const data = snapshot.val();
+            this.isFanSpinning = data;
+        });
+        onValue(isRoofOpen, (snapshot) => {
+            const data = snapshot.val();
+            this.rotateRoof(data)
         });
     },
     mounted() {
@@ -427,6 +468,7 @@ export default {
         window.addEventListener('resize', this.onWindowResize);
         window.addEventListener('click', this.onMouseClick);
         this.animate()
+
     }
 }
 
